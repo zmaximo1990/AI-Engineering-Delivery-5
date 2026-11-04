@@ -1,20 +1,19 @@
 """Queries over the core catalog models.
 
-Each query returns JSON text, including when the lookup fails, so the agent
-can retry with a valid name or ask the user to clarify. The LangChain tools
-that call these queries live in ``tools.py``.
+Each function takes the caller's ``Session`` and returns model instances.
+Those instances are valid only while that session is open. The LangChain
+tools in ``tools.py`` open the session, call these queries, and project the
+models to the JSON the agent reads.
 """
 
-import json
-import logging
 import unicodedata
 from collections.abc import Callable
+from dataclasses import dataclass
+from enum import Enum
 
 from sqlalchemy import func, select
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, joinedload
 
-from db import session_scope
 from models import (
     Asset,
     AssetCompetenceMap,
@@ -24,119 +23,75 @@ from models import (
     TrainingCourse,
     User,
 )
-from schemas import HumanCheckFilter
-from settings import settings
-
-logger = logging.getLogger(__name__)
 
 
-def _dump(payload: dict[str, object]) -> str:
-    return json.dumps(payload, ensure_ascii=False, indent=2)
+class LookupStatus(str, Enum):
+    """How a name lookup resolved."""
+
+    FOUND = "found"
+    AMBIGUOUS = "ambiguous"
+    MISSING = "missing"
+
+
+@dataclass(frozen=True)
+class NameLookup[T]:
+    """Rows selected by a name lookup.
+
+    ``found`` puts one row in ``match`` when the lookup is unique, and every
+    selected row in ``options``. ``ambiguous`` and ``missing`` leave ``match``
+    empty and put the candidate rows in ``options``.
+    """
+
+    status: LookupStatus
+    match: T | None
+    options: list[T]
 
 
 def _fold(value: str) -> str:
     """Case-fold and strip accents so Empatía and empatia match."""
     normalized = unicodedata.normalize("NFKD", value)
-    without_marks = "".join(character for character in normalized if not unicodedata.combining(character))
+    without_marks = "".join(
+        character for character in normalized if not unicodedata.combining(character)
+    )
     return without_marks.casefold().strip()
 
 
-def _blank(value: str | None) -> str | None:
-    if value is None:
-        return None
-    stripped = value.strip()
-    return stripped or None
-
-
-def _find_competence(db: Session, name: str) -> tuple[Competence | None, str | None]:
-    rows = list(db.scalars(select(Competence).order_by(Competence.name)).all())
-    folded = _fold(name)
-    exact = [row for row in rows if _fold(row.name) == folded]
-    if len(exact) == 1:
-        return exact[0], None
-    if len(exact) > 1:
-        return None, _dump(
-            {
-                "error": f"Several competences match {name!r}.",
-                "valid_names": [row.name for row in exact],
-                "hint": "Retry with one exact name from valid_names, or ask the user which competence they mean.",
-            }
-        )
-    partial = [row for row in rows if len(folded) >= 4 and folded in _fold(row.name)]
-    if len(partial) == 1:
-        return partial[0], None
-    if len(partial) > 1:
-        return None, _dump(
-            {
-                "error": f"Several competences match {name!r}.",
-                "valid_names": [row.name for row in partial],
-                "hint": "Retry with one exact name from valid_names, or ask the user which competence they mean.",
-            }
-        )
-    return None, _dump(
-        {
-            "error": f"Competence {name!r} was not found.",
-            "valid_names": [row.name for row in rows],
-            "hint": "Retry with one exact name from valid_names, or ask the user which competence they mean.",
-        }
-    )
-
-
-def _find_assets(db: Session, name: str) -> tuple[list[Asset], str | None]:
-    rows = list(db.scalars(select(Asset).order_by(Asset.name)).all())
-    folded = _fold(name)
-    exact = [row for row in rows if _fold(row.name) == folded]
-    if len(exact) == 1:
-        return exact, None
-    if len(exact) > 1:
-        return [], _dump(
-            {
-                "error": f"Several assets match {name!r}.",
-                "candidates": [row.name for row in exact],
-                "hint": "Retry get_asset with one exact name from candidates.",
-            }
-        )
-    partial = [row for row in rows if len(folded) >= 4 and folded in _fold(row.name)]
-    if len(partial) == 1:
-        return partial, None
-    if len(partial) > 1:
-        return [], _dump(
-            {
-                "error": f"Several assets match {name!r}.",
-                "candidates": [row.name for row in partial],
-                "hint": "Retry get_asset with one exact name from candidates.",
-            }
-        )
-    return [], _dump(
-        {
-            "error": f"Asset {name!r} was not found.",
-            "valid_names": [row.name for row in rows],
-            "hint": "Retry with one exact name from valid_names, or ask the user to clarify.",
-        }
-    )
-
-
-def _match_names[T](
-    rows: list[T],
-    query: str,
-    label: str,
-    name_of: Callable[[T], str],
-) -> tuple[list[T], str | None]:
-    """Return every row whose name matches, or an error when none do."""
+def _name_hits[T](rows: list[T], query: str, name_of: Callable[[T], str]) -> list[T]:
+    """Exact folded matches, or partial matches when the query is long enough."""
     folded = _fold(query)
     exact = [row for row in rows if _fold(name_of(row)) == folded]
     if exact:
-        return exact, None
-    partial = [row for row in rows if len(folded) >= 4 and folded in _fold(name_of(row))]
-    if partial:
-        return partial, None
-    return [], _dump(
-        {
-            "error": f"{label} {query!r} was not found.",
-            "valid_names": [name_of(row) for row in rows],
-            "hint": "Retry with one name from valid_names, or ask the user to clarify.",
-        }
-    )
+        return exact
+    if len(folded) < 4:
+        return []
+    return [row for row in rows if folded in _fold(name_of(row))]
+
+
+def match_names[T](
+    rows: list[T],
+    query: str,
+    name_of: Callable[[T], str],
+) -> NameLookup[T]:
+    """Return every name match. Several matches are ``found``. None is ``missing``."""
+    matched = _name_hits(rows, query, name_of)
+    if not matched:
+        return NameLookup(LookupStatus.MISSING, None, list(rows))
+    match = matched[0] if len(matched) == 1 else None
+    return NameLookup(LookupStatus.FOUND, match, matched)
+
+
+def resolve_name[T](
+    rows: list[T],
+    query: str,
+    name_of: Callable[[T], str],
+) -> NameLookup[T]:
+    """Return one name match. Several matches are ``ambiguous``. None is ``missing``."""
+    matched = _name_hits(rows, query, name_of)
+    if len(matched) == 1:
+        return NameLookup(LookupStatus.FOUND, matched[0], matched)
+    if len(matched) > 1:
+        return NameLookup(LookupStatus.AMBIGUOUS, None, matched)
+    return NameLookup(LookupStatus.MISSING, None, list(rows))
 
 
 def _email_matches(email: str, query: str) -> bool:
@@ -147,48 +102,75 @@ def _email_matches(email: str, query: str) -> bool:
     return len(folded_query) >= 4 and folded_query in folded_email
 
 
-def _review_value(human_check: HumanCheck | None) -> str | None:
-    if human_check is None:
-        return None
-    return human_check.value
+def competences(db: Session) -> list[Competence]:
+    """Return every competence ordered by name."""
+    return list(db.scalars(select(Competence).order_by(Competence.name)).all())
 
 
-def _excerpt(transcription: str) -> str:
-    text = transcription.strip()
-    if not text:
-        return ""
-    limit = settings.transcript_excerpt_chars
-    if len(text) <= limit:
-        return text
-    return text[:limit].rstrip() + "…"
+def assets(db: Session) -> list[Asset]:
+    """Return every asset ordered by name."""
+    return list(db.scalars(select(Asset).order_by(Asset.name)).all())
 
 
-def _known_emails(db: Session) -> list[str]:
-    rows = db.scalars(select(User.email).order_by(User.email)).all()
-    return list(rows)
+def asset_links(db: Session, asset: Asset) -> list[AssetCompetenceMap]:
+    """Return the competence links of one asset, with the competence loaded."""
+    return list(
+        db.scalars(
+            select(AssetCompetenceMap)
+            .where(AssetCompetenceMap.asset_id == asset.id)
+            .options(joinedload(AssetCompetenceMap.competence))
+            .order_by(AssetCompetenceMap.id)
+        ).all()
+    )
 
 
-def _user_payload(user: User) -> dict[str, object]:
-    return {"name": user.name, "email": user.email}
+def assets_for_competence(
+    db: Session,
+    competence: Competence,
+    *,
+    human_check: HumanCheck | None = None,
+    pending_only: bool = False,
+) -> list[tuple[Asset, AssetCompetenceMap]]:
+    """Return assets linked to a competence, ordered by asset name.
+
+    ``pending_only`` keeps links that nobody has reviewed. ``human_check`` keeps
+    one reviewed state. With neither, every review state is returned.
+    """
+    statement = (
+        select(Asset, AssetCompetenceMap)
+        .join(AssetCompetenceMap, AssetCompetenceMap.asset_id == Asset.id)
+        .where(AssetCompetenceMap.competence_id == competence.id)
+        .order_by(Asset.name)
+    )
+    if pending_only:
+        statement = statement.where(AssetCompetenceMap.human_check.is_(None))
+    elif human_check is not None:
+        statement = statement.where(AssetCompetenceMap.human_check == human_check)
+    return [(asset, link) for asset, link in db.execute(statement)]
 
 
-def _course_payload(course: Course) -> dict[str, object]:
-    return {
-        "name": course.name,
-        "icon": course.icon,
-        "competence": course.competence.name,
-    }
+def users(db: Session) -> list[User]:
+    """Return every user ordered by name."""
+    return list(db.scalars(select(User).order_by(User.name)).all())
 
 
-def _training_payload(row: TrainingCourse) -> dict[str, object]:
-    return {
-        "name": row.course.name,
-        "icon": row.course.icon,
-        "user_name": row.user.name,
-        "user_email": row.user.email,
-        "competence": row.course.competence.name,
-        "progress": int(row.progress),
-    }
+def filter_email(rows: list[User], query: str) -> list[User]:
+    """Keep users whose email equals the query, or contains it when it is long enough."""
+    return [user for user in rows if _email_matches(user.email, query)]
+
+
+def known_emails(db: Session) -> list[str]:
+    """Return every user email ordered by email."""
+    return list(db.scalars(select(User.email).order_by(User.email)).all())
+
+
+def courses(db: Session) -> list[Course]:
+    """Return every course ordered by name, with the competence loaded."""
+    return list(
+        db.scalars(
+            select(Course).options(joinedload(Course.competence)).order_by(Course.name)
+        ).all()
+    )
 
 
 def _training_statement():
@@ -203,260 +185,47 @@ def _training_statement():
     )
 
 
-def run(query: Callable[[], str]) -> str:
-    try:
-        return query()
-    except OperationalError:
-        logger.exception("Core catalog query failed")
-        return _dump(
-            {
-                "error": "The core catalog is not initialized. Run python main.py --fixtures.",
-                "hint": "Ask the user to load the fixtures, or stop if you cannot.",
-            }
+def trainings_for_user(db: Session, email: str) -> list[TrainingCourse]:
+    """Return the trainings assigned to an email, ordered by course name."""
+    folded = email.strip().casefold()
+    return list(
+        db.scalars(
+            _training_statement()
+            .where(func.lower(User.email) == folded)
+            .order_by(Course.name)
         )
-    except Exception as exc:
-        logger.exception("Tool query failed")
-        return _dump(
-            {
-                "error": "The catalog query failed.",
-                "detail": str(exc),
-                "hint": "Retry once. If it fails again, tell the user the catalog could not be read.",
-            }
+        .unique()
+        .all()
+    )
+
+
+def trainings_for_competence(db: Session, competence: Competence) -> list[TrainingCourse]:
+    """Return the trainings activated for one competence."""
+    return list(
+        db.scalars(
+            _training_statement()
+            .where(Course.competence_id == competence.id)
+            .order_by(User.email, Course.name)
         )
+        .unique()
+        .all()
+    )
 
 
-def get_competence(name: str) -> str:
-    with session_scope() as db:
-        competence, error = _find_competence(db, name)
-        if error is not None or competence is None:
-            return error or _dump({"error": "Competence was not found."})
-        return _dump(
-            {
-                "id": competence.id,
-                "name": competence.name,
-                "description": competence.description,
-            }
+def trainings_for_user_and_competence(
+    db: Session,
+    email: str,
+    competence: Competence,
+) -> list[TrainingCourse]:
+    """Return one user's trainings for one competence, ordered by course name."""
+    folded = email.strip().casefold()
+    return list(
+        db.scalars(
+            _training_statement()
+            .where(Course.competence_id == competence.id)
+            .where(func.lower(User.email) == folded)
+            .order_by(Course.name)
         )
-
-
-def list_assets_by_competence(name: str, human_check: HumanCheckFilter | None) -> str:
-    with session_scope() as db:
-        competence, error = _find_competence(db, name)
-        if error is not None or competence is None:
-            return error or _dump({"error": "Competence was not found."})
-
-        statement = (
-            select(Asset, AssetCompetenceMap)
-            .join(AssetCompetenceMap, AssetCompetenceMap.asset_id == Asset.id)
-            .where(AssetCompetenceMap.competence_id == competence.id)
-            .order_by(Asset.name)
-        )
-        if human_check is HumanCheckFilter.PENDING:
-            statement = statement.where(AssetCompetenceMap.human_check.is_(None))
-        elif human_check is not None:
-            statement = statement.where(
-                AssetCompetenceMap.human_check == HumanCheck(human_check.value)
-            )
-
-        assets: list[dict[str, object]] = []
-        for asset, link in db.execute(statement):
-            assets.append(
-                {
-                    "name": asset.name,
-                    "type": asset.type,
-                    "url": asset.url,
-                    "ai_check": link.ai_check,
-                    "human_check": _review_value(link.human_check),
-                }
-            )
-        return _dump(
-            {
-                "competence": competence.name,
-                "human_check": None if human_check is None else human_check.value,
-                "order": "name",
-                "assets": assets,
-                "note": (
-                    "Transcriptions are omitted. "
-                    "The first item is the first asset for this filter. "
-                    "Call get_asset with that exact name to read a transcription excerpt."
-                ),
-            }
-        )
-
-
-def get_asset(name: str) -> str:
-    with session_scope() as db:
-        matches, error = _find_assets(db, name)
-        if error is not None:
-            return error
-        asset = matches[0]
-        links = db.scalars(
-            select(AssetCompetenceMap)
-            .where(AssetCompetenceMap.asset_id == asset.id)
-            .options(joinedload(AssetCompetenceMap.competence))
-            .order_by(AssetCompetenceMap.id)
-        ).all()
-        checks = [
-            {
-                "competence": link.competence.name,
-                "ai_check": link.ai_check,
-                "human_check": _review_value(link.human_check),
-            }
-            for link in links
-        ]
-        excerpt = _excerpt(asset.transcription)
-        incomplete = excerpt == "" or any(not check["ai_check"] for check in checks)
-        payload: dict[str, object] = {
-            "name": asset.name,
-            "type": asset.type,
-            "url": asset.url,
-            "checks": checks,
-            "transcription_excerpt": excerpt,
-            "incomplete": incomplete,
-        }
-        if incomplete:
-            payload["hint"] = (
-                "This record is incomplete. Say what is missing "
-                "(empty transcription and/or ai_check false) instead of inventing it."
-            )
-        return _dump(payload)
-
-
-def list_users(name: str | None = None, email: str | None = None) -> str:
-    """List users, optionally filtered by name and email. Several matches are all returned."""
-    with session_scope() as db:
-        rows = list(db.scalars(select(User).order_by(User.name)).all())
-        selected = rows
-        name_query = _blank(name)
-        email_query = _blank(email)
-        if name_query is not None:
-            selected, error = _match_names(selected, name_query, "User", lambda user: user.name)
-            if error is not None:
-                return error
-        if email_query is not None:
-            selected = [user for user in selected if _email_matches(user.email, email_query)]
-            if not selected:
-                return _dump(
-                    {
-                        "error": f"No user matches email {email_query!r}.",
-                        "known_emails": _known_emails(db),
-                        "hint": "Retry with one email from known_emails, or ask the user which person they mean.",
-                    }
-                )
-        return _dump(
-            {
-                "name": name_query,
-                "email": email_query,
-                "users": [_user_payload(user) for user in selected],
-            }
-        )
-
-
-def list_courses(name: str | None = None) -> str:
-    """List courses with icon and competence. A name filter returns every match, not one guess."""
-    with session_scope() as db:
-        rows = list(
-            db.scalars(
-                select(Course)
-                .options(joinedload(Course.competence))
-                .order_by(Course.name)
-            ).all()
-        )
-        name_query = _blank(name)
-        selected = rows
-        if name_query is not None:
-            selected, error = _match_names(selected, name_query, "Course", lambda course: course.name)
-            if error is not None:
-                return error
-        return _dump(
-            {
-                "name": name_query,
-                "courses": [_course_payload(course) for course in selected],
-            }
-        )
-
-
-def list_trainings_by_user(email: str) -> str:
-    with session_scope() as db:
-        folded = email.strip().casefold()
-        matched = list(
-            db.scalars(
-                _training_statement()
-                .where(func.lower(User.email) == folded)
-                .order_by(Course.name)
-            )
-            .unique()
-            .all()
-        )
-        if not matched:
-            return _dump(
-                {
-                    "error": f"No trainings are assigned to {email!r}.",
-                    "known_emails": _known_emails(db),
-                    "hint": "Retry with one email from known_emails, or ask the user which person they mean.",
-                }
-            )
-        return _dump(
-            {
-                "email": matched[0].user.email,
-                "trainings": [_training_payload(row) for row in matched],
-            }
-        )
-
-
-def list_trainings_competence(name: str) -> str:
-    with session_scope() as db:
-        competence, error = _find_competence(db, name)
-        if error is not None or competence is None:
-            return error or _dump({"error": "Competence was not found."})
-        rows = list(
-            db.scalars(
-                _training_statement()
-                .where(Course.competence_id == competence.id)
-                .order_by(User.email, Course.name)
-            )
-            .unique()
-            .all()
-        )
-        return _dump(
-            {
-                "competence": competence.name,
-                "trainings": [_training_payload(row) for row in rows],
-            }
-        )
-
-
-def list_trainings_by_user_and_competence(email: str, name: str) -> str:
-    with session_scope() as db:
-        competence, error = _find_competence(db, name)
-        if error is not None or competence is None:
-            return error or _dump({"error": "Competence was not found."})
-        folded = email.strip().casefold()
-        matched = list(
-            db.scalars(
-                _training_statement()
-                .where(Course.competence_id == competence.id)
-                .where(func.lower(User.email) == folded)
-                .order_by(Course.name)
-            )
-            .unique()
-            .all()
-        )
-        if not matched:
-            return _dump(
-                {
-                    "error": (
-                        f"No trainings for {email!r} on competence {competence.name!r}."
-                    ),
-                    "competence": competence.name,
-                    "known_emails": _known_emails(db),
-                    "hint": "Retry with a known email, or ask the user to clarify the person.",
-                }
-            )
-        return _dump(
-            {
-                "email": matched[0].user.email,
-                "competence": competence.name,
-                "trainings": [_training_payload(row) for row in matched],
-            }
-        )
+        .unique()
+        .all()
+    )
