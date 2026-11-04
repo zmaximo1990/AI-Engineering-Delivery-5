@@ -19,9 +19,18 @@ asset_competence_map,Feedback que mueve al equipo,,,,,Liderazgo,true,approved,,,
 asset_competence_map,Decidir con el mapa incompleto,,,,,Liderazgo,true,,,,,
 asset_competence_map,Leer la sala,,,,,Inteligencia Social,true,approved,,,,
 asset_competence_map,El silencio en la mesa,,,,,Inteligencia Social,false,,,,,
-training_course,Liderazgo en la práctica,,,,,Liderazgo,,,🎯,Ana Pérez,ana@nimbus.test,45
-training_course,Feedback semanal,,,,,Liderazgo,,,💬,Ana Pérez,ana@nimbus.test,20
-training_course,Empatía en el 1:1,,,,,Empatía,,,🤝,Ana Pérez,ana@nimbus.test,10
-training_course,Leer la sala,,,,,Inteligencia Social,,,👀,Luis Gómez,luis@nimbus.test,60
-training_course,Inteligencia social aplicada,,,,,Inteligencia Social,,,🧭,María Ruiz,maria@nimbus.test,5
-training_course,Empatía para líderes,,,,,Empatía,,,💚,Luis Gómez,luis@nimbus.test,80
+user,Ana Pérez,,,,,,,,,,ana@nimbus.test,
+user,Luis Gómez,,,,,,,,,,luis@nimbus.test,
+user,María Ruiz,,,,,,,,,,maria@nimbus.test,
+course,Liderazgo en la práctica,,,,,Liderazgo,,,🎯,,,
+course,Feedback semanal,,,,,Liderazgo,,,💬,,,
+course,Empatía en el 1:1,,,,,Empatía,,,🤝,,,
+course,Leer la sala,,,,,Inteligencia Social,,,👀,,,
+course,Inteligencia social aplicada,,,,,Inteligencia Social,,,🧭,,,
+course,Empatía para líderes,,,,,Empatía,,,💚,,,
+training_course,Liderazgo en la práctica,,,,,,,,,,ana@nimbus.test,45
+training_course,Feedback semanal,,,,,,,,,,ana@nimbus.test,20
+training_course,Empatía en el 1:1,,,,,,,,,,ana@nimbus.test,10
+training_course,Leer la sala,,,,,,,,,,luis@nimbus.test,60
+training_course,Inteligencia social aplicada,,,,,,,,,,maria@nimbus.test,5
+training_course,Empatía para líderes,,,,,,,,,,luis@nimbus.test,80

@@ -51,7 +51,7 @@ class Competence(Base):
     asset_links: Mapped[list["AssetCompetenceMap"]] = relationship(
         back_populates="competence",
     )
-    trainings: Mapped[list["TrainingCourse"]] = relationship(back_populates="competence")
+    courses: Mapped[list["Course"]] = relationship(back_populates="competence")
 
 
 class AssetCompetenceMap(Base):
@@ -84,24 +84,49 @@ class AssetCompetenceMap(Base):
     competence: Mapped[Competence] = relationship(back_populates="asset_links")
 
 
-class TrainingCourse(Base):
-    """A training course assigned to a person for one competence."""
+class User(Base):
+    """A person who can be enrolled in courses."""
 
-    __tablename__ = "training_courses"
-    __table_args__ = (
-        CheckConstraint("progress >= 0 AND progress <= 100", name="ck_training_progress"),
-    )
+    __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    email: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
+
+    enrollments: Mapped[list["TrainingCourse"]] = relationship(back_populates="user")
+
+
+class Course(Base):
+    """A course that trains one competence."""
+
+    __tablename__ = "courses"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
     icon: Mapped[str] = mapped_column(String(32), nullable=False)
-    user_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    user_email: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
-    progress: Mapped[int] = mapped_column(Integer, nullable=False)
     competence_id: Mapped[int] = mapped_column(
         ForeignKey("competences.id"),
         nullable=False,
         index=True,
     )
 
-    competence: Mapped[Competence] = relationship(back_populates="trainings")
+    competence: Mapped[Competence] = relationship(back_populates="courses")
+    enrollments: Mapped[list["TrainingCourse"]] = relationship(back_populates="course")
+
+
+class TrainingCourse(Base):
+    """One user enrolled in one course, with a progress percentage."""
+
+    __tablename__ = "training_courses"
+    __table_args__ = (
+        CheckConstraint("progress >= 0 AND progress <= 100", name="ck_training_progress"),
+        UniqueConstraint("user_id", "course_id", name="uq_user_course"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), nullable=False, index=True)
+    progress: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    user: Mapped[User] = relationship(back_populates="enrollments")
+    course: Mapped[Course] = relationship(back_populates="enrollments")

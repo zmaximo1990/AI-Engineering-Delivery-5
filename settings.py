@@ -9,6 +9,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 PROJECT_DIR = Path(__file__).resolve().parent
 
 _PROVIDERS = {"openai", "anthropic", "gemini"}
+# sqlite is the only backend shipped. A new one is a name here plus an opener
+# in checkpointer.py; main.py and the graph stay the same.
+# Add a new backend to the list here. For example, if you add "postgres".
+_CHECKPOINT_BACKENDS = {"sqlite"}
 
 
 class Settings(BaseSettings):
@@ -28,8 +32,9 @@ class Settings(BaseSettings):
 
     data_dir: Path = PROJECT_DIR / "data"
     fixtures_path: Path = PROJECT_DIR / "data" / "fixtures.csv"
-    core_db_path: Path = PROJECT_DIR / "data" / "catalog.sqlite"
-    checkpoint_db_path: Path = PROJECT_DIR / "data" / "checkpoints.sqlite"
+    core_db_path: Path = PROJECT_DIR / "data" / "core.sqlite"
+    checkpoint_backend: str = Field(default="sqlite", validation_alias="CHECKPOINT_BACKEND")
+    checkpoint_db_path: Path = PROJECT_DIR / "data" / "graph_checkpoints.sqlite"
     trace_log_path: Path = PROJECT_DIR / "trace.log"
 
     transcript_excerpt_chars: int = 400
@@ -59,6 +64,17 @@ class Settings(BaseSettings):
         if lowered not in _PROVIDERS:
             allowed = ", ".join(sorted(_PROVIDERS))
             raise ValueError(f"LLM_PROVIDER must be one of: {allowed}")
+        return lowered
+
+    @field_validator("checkpoint_backend", mode="before")
+    @classmethod
+    def _checkpoint_backend(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        lowered = value.strip().lower()
+        if lowered not in _CHECKPOINT_BACKENDS:
+            allowed = ", ".join(sorted(_CHECKPOINT_BACKENDS))
+            raise ValueError(f"CHECKPOINT_BACKEND must be one of: {allowed}")
         return lowered
 
     @field_validator("transcript_excerpt_chars")

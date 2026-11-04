@@ -4,16 +4,18 @@ flowchart TD
     llm -->|"tools_condition<br/>the reply has no tool_calls"| END([END])
     tools -->|"observation goes back to the model"| llm
 
-    catalog[("catalog.sqlite<br/>assets, competences, maps, trainings")]
-    checkpoints[("checkpoints.sqlite<br/>AsyncSqliteSaver, one state per thread_id")]
+    core[("core.sqlite<br/>assets, competences, users, courses, enrollments")]
+    graph_checkpoints[("graph_checkpoints.sqlite<br/>AsyncSqliteSaver, one state per thread_id")]
 
-    tools --> catalog
-    llm -.-> checkpoints
+    tools --> core
+    llm -.-> graph_checkpoints
 
     subgraph queries [Tools in tools.py]
         get_competence
         list_assets_by_competence
         get_asset
+        list_users
+        list_courses
         list_trainings_by_user
         list_trainings_competence
         list_trainings_by_user_and_competence

@@ -71,6 +71,38 @@ class AssetNameInput(BaseModel):
     )
 
 
+class ListUsersInput(BaseModel):
+    """Optional filters for the user directory. Omit both to list every user."""
+
+    name: str | None = Field(
+        default=None,
+        description=(
+            "Person name, for example Ana Pérez. "
+            "Accent-insensitive. Omit to ignore the name."
+        ),
+    )
+    email: str | None = Field(
+        default=None,
+        description=(
+            "User email, for example ana@nimbus.test. "
+            "Case-insensitive. Omit to ignore the email."
+        ),
+    )
+
+
+class ListCoursesInput(BaseModel):
+    """Optional name filter for the course catalog. Omit it to list every course."""
+
+    name: str | None = Field(
+        default=None,
+        description=(
+            "Course name, for example Empatía en el 1:1. "
+            "Accent-insensitive. Omit to return every course. "
+            "Does not filter by who is enrolled."
+        ),
+    )
+
+
 class UserEmailInput(BaseModel):
     """Email of the person assigned to a training course."""
 

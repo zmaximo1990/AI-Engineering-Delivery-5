@@ -1,6 +1,6 @@
 # Code Delivery for Module #5 | Cyclic agent with persistent memory
 
-Async LangGraph agent that answers questions about a competence catalog. The model decides which catalog query to call. Tool results come back into the same node, so one question can take several steps. `AsyncSqliteSaver` keeps that conversation under a `thread_id`. The catalog itself lives in a second SQLite file.
+Async LangGraph agent that answers questions about a competence catalog. The model decides which core query to call. Tool results come back into the same node (loop), so one question can take several steps (multi-step agent). The checkpointer selected by `CHECKPOINT_BACKEND` keeps that conversation under a `thread_id`. The default is `sqlite` (`AsyncSqliteSaver`). The catalog itself lives in a second SQLite file.
 
 This delivery does not classify uploads and it does not build a training plan. Those flows are out of scope. The catalog is seeded, and the agent only reads it.
 
@@ -21,10 +21,12 @@ The same `thread_id` reloads the checkpoint, so a follow-up such as "¿Y para Li
 
 | File | Role |
 |------|------|
-| `data/catalog.sqlite` | Core catalog: assets, competences, the asset-competence map, and training courses. The tools read this file. `--fixtures` rebuilds it from `data/fixtures.csv`. |
-| `data/checkpoints.sqlite` | LangGraph checkpointer (`AsyncSqliteSaver`). One conversation state per `thread_id`. |
+| `data/core.sqlite` | Core catalog: assets, competences, the asset-competence map, users, courses, and enrollments. The tools read this file. `--fixtures` rebuilds it from `data/fixtures.csv`. |
+| `data/graph_checkpoints.sqlite` | Default LangGraph checkpointer (`AsyncSqliteSaver`, `CHECKPOINT_BACKEND=sqlite`). One conversation state per `thread_id`. |
 
 Neither file is committed. `trace.log` is the local execution trace and is gitignored too. The CLI and `python main.py --demo` both append each turn there. `-c` / `--clean` truncates that file before the run.
+
+`main.py` does not construct the saver. It calls `open_checkpointer()`, and `compile_agent` accepts any LangGraph `BaseCheckpointSaver`. `sqlite` is the only value `CHECKPOINT_BACKEND` accepts today. Another backend later (for example Postgres via `AsyncPostgresSaver`) is a local change: allow the name in `settings.py`, register an async opener in `checkpointer.py` that calls `setup()` and yields the saver, and install that saver's package (`langgraph-checkpoint-postgres` for Postgres, with a connection string setting). The graph and `main.py` stay as they are.
 
 ## Requirements
 
@@ -54,16 +56,18 @@ Put the key for the provider you call in `.env`. That file is gitignored.
 |------|------|
 | `main.py` | Loads fixtures, runs the demo, or reads questions until `exit` or `quit` |
 | `agent.py` | `StateGraph` on `MessagesState`, model node, tool node, conditional edge, trace formatting |
-| `db.py` | SQLAlchemy queries over the core catalog |
+| `db.py` | Engine, session, and `reset_core_db` for the core catalog |
+| `repository.py` | SQLAlchemy queries over the catalog models |
 | `tools.py` | `@tool` wrappers the agent binds to the model |
-| `models.py` | `Asset`, `Competence`, `AssetCompetenceMap`, `TrainingCourse` |
+| `models.py` | `Asset`, `Competence`, `AssetCompetenceMap`, `User`, `Course`, `TrainingCourse` |
 | `fixtures.py` | `load_fixtures`: replaces the core catalog from the CSV |
-| `data/fixtures.csv` | Seed rows for the four tables |
+| `data/fixtures.csv` | Seed rows for competences, assets, maps, users, courses, and enrollments |
 | `samples.py` | Demo questions, including a follow-up on the same thread |
 | `llm.py` | `OpenAIClient`, `AnthropicClient`, and `GeminiClient` |
 | `factory.py` | Builds the chat client from `LLMConfig` |
+| `checkpointer.py` | Opens the saver named by `CHECKPOINT_BACKEND`. SQLite is the one shipped. |
 | `schemas.py` | `LLMProvider`, `LLMConfig`, and the tool input models |
-| `settings.py` | Paths, `recursion_limit`, excerpt length, and the default provider |
+| `settings.py` | Paths, `recursion_limit`, excerpt length, the default provider, and the checkpointer backend |
 | `diagrams/graph.mermaid` | The agent graph and the two databases |
 | `trace.log` | Execution trace. The CLI and `--demo` append each turn here. Gitignored. `-c` / `--clean` truncates it. |
 | `requirements.txt` | Dependencies |
@@ -80,6 +84,8 @@ Put the key for the provider you call in `.env`. That file is gitignored.
 | `get_competence` | Resolve a competence name to its id and description. On a miss, the payload lists the valid names. |
 | `list_assets_by_competence` | Assets linked to a competence, optionally filtered by human review. No transcription. |
 | `get_asset` | One asset: url, checks, transcription excerpt. Several matches come back as names to retry with. |
+| `list_users` | People in the catalog. Optional name or email filter. Does not include enrollments. |
+| `list_courses` | Courses with icon and competence. Optional name filter. Does not say who is enrolled. |
 | `list_trainings_by_user` | Courses assigned to an email. |
 | `list_trainings_competence` | Courses activated for a competence. |
 | `list_trainings_by_user_and_competence` | Courses for one person and one competence, including progress as an integer percentage from 0 to 100. |
@@ -94,7 +100,7 @@ Run from this directory. The first run needs `--fixtures` so the core catalog ex
 python main.py --fixtures
 
 # Questions from the terminal. exit or quit stops.
-# thread_id cli is reused across runs until data/checkpoints.sqlite is deleted.
+# thread_id cli is reused across runs until data/graph_checkpoints.sqlite is deleted.
 python main.py
 
 python main.py -l anthropic
@@ -107,7 +113,7 @@ python main.py -f --demo
 python main.py -c --demo
 ```
 
-`--fixtures` / `-f` rebuilds `data/catalog.sqlite` and then continues into the demo or the prompt. It does not modify `data/checkpoints.sqlite`. `-c` / `--clean` truncates `trace.log` before that run. Without it, new turns are appended.
+`--fixtures` / `-f` rebuilds `data/core.sqlite` and then continues into the demo or the prompt. It does not modify `data/graph_checkpoints.sqlite`. `-c` / `--clean` truncates `trace.log` before that run. Without it, new turns are appended.
 
 ### Demo
 
@@ -126,4 +132,4 @@ The people in the fixtures are Ana Pérez (`ana@nimbus.test`), Luis Gómez (`lui
 
 Each turn is appended to `trace.log` (gitignored), from the CLI and from `--demo`. A turn records the time, the `thread_id`, how many tool results came back, the user text, each tool call with its arguments, each tool payload, and the final answer. `-c` / `--clean` truncates that file first.
 
-To drop the remembered CLI session, delete `data/checkpoints.sqlite`. To rebuild the catalog, run `python main.py --fixtures`.
+To drop the remembered CLI session, delete `data/graph_checkpoints.sqlite`. To rebuild the catalog, run `python main.py --fixtures`.

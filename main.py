@@ -1,19 +1,16 @@
 # Load env before the modules that read API keys from the environment.
-from pathlib import Path
-
 from dotenv import load_dotenv
-
-load_dotenv(Path(__file__).resolve().with_name(".env"))
+load_dotenv()
 
 import argparse
 import asyncio
 import logging
 from datetime import datetime, timezone
 
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph.state import CompiledStateGraph
 
 from agent import compile_agent, ask
+from checkpointer import open_checkpointer
 from fixtures import load_fixtures
 from samples import DEMO_QUESTIONS
 from schemas import LLMConfig, LLMProvider
@@ -89,8 +86,8 @@ async def _run_loop(graph: CompiledStateGraph) -> None:
         flush=True,
     )
     print(
-        "This session reuses thread_id cli. "
-        "Delete data/checkpoints.sqlite to forget the conversation.",
+        "This session reuses thread_id cli defined in constant `CLI_THREAD_ID`. "
+        f"Delete {settings.checkpoint_db_path} to forget the conversation.",
         flush=True,
     )
     print("Write a question and press Enter. exit or quit to terminate.\n", flush=True)
@@ -128,10 +125,9 @@ async def main(args: argparse.Namespace) -> None:
 
     config = LLMConfig(provider=LLMProvider(args.llm))
     logger.info("LLMConfig initialized (provider=%s)", config.provider.value)
-    settings.checkpoint_db_path.parent.mkdir(parents=True, exist_ok=True)
+    logger.info("Checkpointer backend=%s", settings.checkpoint_backend)
 
-    async with AsyncSqliteSaver.from_conn_string(str(settings.checkpoint_db_path)) as checkpointer:
-        await checkpointer.setup()
+    async with open_checkpointer() as checkpointer:
         graph = compile_agent(config, checkpointer)
         if args.demo:
             await _run_demo(graph)

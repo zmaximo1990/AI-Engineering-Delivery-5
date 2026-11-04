@@ -2,8 +2,9 @@
 
 The model node decides when to call a tool. ``tools_condition`` sends the
 graph back through the tool node until the model answers without a tool call.
-``AsyncSqliteSaver`` stores that state per ``thread_id``. The core catalog
-lives in a different SQLite file and is only reached through the tools.
+The checkpointer from ``CHECKPOINT_BACKEND`` stores that state per ``thread_id``
+(SQLite by default). The core catalog lives in a different SQLite file and is
+only reached through the tools.
 """
 
 import json
@@ -30,7 +31,7 @@ Reply in the user's language.
 Every fact about competences, assets, or trainings must come from a tool. Do not invent names, urls, review states, transcriptions, or progress values.
 list_assets_by_competence does not include the transcription. When the user wants to know what an asset says, call get_asset with the exact name of the first item in that list, or of the item they asked for.
 When a tool returns an error or incomplete data, call it again with a valid name from that response, or ask the user to clarify. Do not fill the gap from memory.
-When they ask for a person's trainings, call list_trainings_by_user. That list already includes each course's competence and progress. Progress is an integer from 0 to 100 and is already a percentage: do not scale it. list_trainings_by_user_and_competence does not replace the full list.
+When they ask who someone is, or which courses exist, call list_users or list_courses. When they ask what a person is taking, call list_trainings_by_user. That list already includes each course's competence and progress. Progress is an integer from 0 to 100 and is already a percentage: do not scale it. list_trainings_by_user_and_competence does not replace the full list.
 On a follow-up, use the conversation to understand the subject, then query the tools again for the new case.
 """
 

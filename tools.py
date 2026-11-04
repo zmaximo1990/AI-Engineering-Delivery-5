@@ -1,27 +1,32 @@
 """LangChain tools over the catalog queries.
 
 The model chooses a tool from its description. These functions do not route
-the conversation.
+the conversation. Query functions are imported under aliases so the wrappers
+do not shadow them.
 """
 
 import logging
 
 from langchain_core.tools import tool
 
-from db import (
-    get_asset,
-    get_competence,
-    list_assets_by_competence,
-    list_trainings_by_user,
-    list_trainings_by_user_and_competence,
-    list_trainings_competence,
-    run,
+from repository import get_asset as query_get_asset
+from repository import get_competence as query_get_competence
+from repository import list_assets_by_competence as query_list_assets_by_competence
+from repository import list_courses as query_list_courses
+from repository import list_trainings_by_user as query_list_trainings_by_user
+from repository import (
+    list_trainings_by_user_and_competence as query_list_trainings_by_user_and_competence,
 )
+from repository import list_trainings_competence as query_list_trainings_competence
+from repository import list_users as query_list_users
+from repository import run
 from schemas import (
     AssetNameInput,
     CompetenceNameInput,
     HumanCheckFilter,
     ListAssetsInput,
+    ListCoursesInput,
+    ListUsersInput,
     UserAndCompetenceInput,
     UserEmailInput,
 )
@@ -44,7 +49,7 @@ logger = logging.getLogger(__name__)
 def get_competence(name: str) -> str:
     """Return one competence id and description, or the valid names when it is missing."""
     logger.info("tool get_competence name=%s", name)
-    return run(lambda: get_competence(name))
+    return run(lambda: query_get_competence(name))
 
 
 @tool(
@@ -68,7 +73,7 @@ def list_assets_by_competence(
 ) -> str:
     """Return assets and review flags for a competence, without the transcription."""
     logger.info("tool list_assets_by_competence name=%s human_check=%s", name, human_check)
-    return run(lambda: list_assets_by_competence(name, human_check))
+    return run(lambda: query_list_assets_by_competence(name, human_check))
 
 
 @tool(
@@ -87,7 +92,42 @@ def list_assets_by_competence(
 def get_asset(name: str) -> str:
     """Return the url, review checks, and a transcription excerpt for one asset."""
     logger.info("tool get_asset name=%s", name)
-    return run(lambda: get_asset(name))
+    return run(lambda: query_get_asset(name))
+
+
+@tool(
+    "list_users",
+    args_schema=ListUsersInput,
+    description=(
+        "List people in the catalog. Omit both filters to return every user. "
+        "Pass name for an accent-insensitive match, or email for a case-insensitive match. "
+        "Use it when the user asks who someone is, or which people exist. "
+        "Does not return the courses that person is taking: call list_trainings_by_user for that. "
+        "Several matches are all returned. If nothing matches, returns the known names or emails "
+        "so you can retry or ask the user to clarify."
+    ),
+)
+def list_users(name: str | None = None, email: str | None = None) -> str:
+    """Return users, optionally filtered by name or email."""
+    logger.info("tool list_users name=%s email=%s", name, email)
+    return run(lambda: query_list_users(name, email))
+
+
+@tool(
+    "list_courses",
+    args_schema=ListCoursesInput,
+    description=(
+        "List courses in the catalog, with icon and competence. "
+        "Omit name to return every course. Pass name for an accent-insensitive filter. "
+        "Use it when the user asks which courses exist. "
+        "Does not say who is enrolled. For a person's courses, call list_trainings_by_user. "
+        "Several matches are all returned. If the name does not exist, returns the valid course names."
+    ),
+)
+def list_courses(name: str | None = None) -> str:
+    """Return courses and their competence, without enrollments."""
+    logger.info("tool list_courses name=%s", name)
+    return run(lambda: query_list_courses(name))
 
 
 @tool(
@@ -106,24 +146,25 @@ def get_asset(name: str) -> str:
 def list_trainings_by_user(email: str) -> str:
     """Return the trainings assigned to a user email."""
     logger.info("tool list_trainings_by_user email=%s", email)
-    return run(lambda: list_trainings_by_user(email))
+    return run(lambda: query_list_trainings_by_user(email))
 
 
 @tool(
     "list_trainings_competence",
     args_schema=CompetenceNameInput,
     description=(
-        "List the training courses activated for one competence. "
+        "List the enrollments activated for one competence. "
         "Returns each course name, icon, user name, user email, and progress as an integer percentage from 0 to 100. "
         "Report that number as the percentage. Do not scale it. "
-        "Use it when the user asks who is training a competence or which courses exist for it. "
+        "Use it when the user asks who is training a competence. "
+        "To list the course catalog itself, call list_courses. "
         "If the competence does not exist, returns the valid competence names so you can retry or ask."
     ),
 )
 def list_trainings_competence(name: str) -> str:
     """Return the trainings activated for one competence."""
     logger.info("tool list_trainings_competence name=%s", name)
-    return run(lambda: list_trainings_competence(name))
+    return run(lambda: query_list_trainings_competence(name))
 
 
 @tool(
@@ -148,13 +189,15 @@ def list_trainings_by_user_and_competence(email: str, name: str) -> str:
         email,
         name,
     )
-    return run(lambda: list_trainings_by_user_and_competence(email, name))
+    return run(lambda: query_list_trainings_by_user_and_competence(email, name))
 
 
 tools = [
     get_competence,
     list_assets_by_competence,
     get_asset,
+    list_users,
+    list_courses,
     list_trainings_by_user,
     list_trainings_competence,
     list_trainings_by_user_and_competence,

@@ -7,7 +7,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from db import reset_core_db, session_scope
-from models import Asset, AssetCompetenceMap, Competence, HumanCheck, TrainingCourse
+from models import Asset, AssetCompetenceMap, Competence, Course, HumanCheck, TrainingCourse, User
 from settings import settings
 
 logger = logging.getLogger(__name__)
@@ -29,11 +29,15 @@ def load_fixtures(path: Path | None = None) -> dict[str, int]:
         competences = _insert_competences(db, grouped["competence"])
         assets = _insert_assets(db, grouped["asset"])
         maps = _insert_maps(db, grouped["asset_competence_map"], assets, competences)
-        trainings = _insert_trainings(db, grouped["training_course"], competences)
+        users = _insert_users(db, grouped["user"])
+        courses = _insert_courses(db, grouped["course"], competences)
+        trainings = _insert_trainings(db, grouped["training_course"], users, courses)
     counts = {
         "competences": len(competences),
         "assets": len(assets),
         "asset_competence_map": maps,
+        "users": len(users),
+        "courses": len(courses),
         "training_courses": trainings,
     }
     logger.info("Loaded fixtures from %s: %s", csv_path, counts)
@@ -47,6 +51,8 @@ def _read_rows(path: Path) -> dict[str, list[dict[str, str]]]:
         "competence": [],
         "asset": [],
         "asset_competence_map": [],
+        "user": [],
+        "course": [],
         "training_course": [],
     }
     with path.open(encoding="utf-8", newline="") as handle:
@@ -134,7 +140,7 @@ def _insert_assets(db: Session, rows: list[dict[str, str]]) -> dict[str, Asset]:
     return found
 
 
-def _lookup(found: dict[str, Competence] | dict[str, Asset], name: str, kind: str) -> Competence | Asset:
+def _lookup[T](found: dict[str, T], name: str, kind: str) -> T:
     for key, value in found.items():
         if key.casefold() == name.casefold():
             return value
@@ -171,24 +177,63 @@ def _insert_maps(
     return len(rows)
 
 
-def _insert_trainings(
+def _insert_users(db: Session, rows: list[dict[str, str]]) -> dict[str, User]:
+    found: dict[str, User] = {}
+    for row in rows:
+        email = _require(row, "user_email", "user")
+        if email.casefold() in {item.casefold() for item in found}:
+            raise ValueError(f"Duplicate user email: {email}")
+        user = User(name=_require(row, "name", "user"), email=email)
+        db.add(user)
+        found[email] = user
+    db.flush()
+    return found
+
+
+def _insert_courses(
     db: Session,
     rows: list[dict[str, str]],
     competences: dict[str, Competence],
-) -> int:
+) -> dict[str, Course]:
+    found: dict[str, Course] = {}
     for row in rows:
-        competence_name = _require(row, "competence", "training_course")
+        name = _require(row, "name", "course")
+        if name.casefold() in {item.casefold() for item in found}:
+            raise ValueError(f"Duplicate course: {name}")
+        competence_name = _require(row, "competence", "course")
         competence = _lookup(competences, competence_name, "competence")
-        if not isinstance(competence, Competence):
-            raise ValueError(f"Training row resolved the wrong record for {competence_name}")
+        course = Course(
+            name=name,
+            icon=_require(row, "icon", "course"),
+            competence_id=competence.id,
+        )
+        db.add(course)
+        found[name] = course
+    db.flush()
+    return found
+
+
+def _insert_trainings(
+    db: Session,
+    rows: list[dict[str, str]],
+    users: dict[str, User],
+    courses: dict[str, Course],
+) -> int:
+    seen: set[tuple[str, str]] = set()
+    for row in rows:
+        course_name = _require(row, "name", "training_course")
+        email = _require(row, "user_email", "training_course")
+        key = (email.casefold(), course_name.casefold())
+        if key in seen:
+            raise ValueError(f"Duplicate enrollment for {email} / {course_name}")
+        seen.add(key)
+        user = _lookup(users, email, "user")
+        course = _lookup(courses, course_name, "course")
         db.add(
             TrainingCourse(
-                name=_require(row, "name", "training_course"),
-                icon=_require(row, "icon", "training_course"),
-                user_name=_require(row, "user_name", "training_course"),
-                user_email=_require(row, "user_email", "training_course"),
+                user_id=user.id,
+                course_id=course.id,
                 progress=_parse_progress(_require(row, "progress", "training_course")),
-                competence_id=competence.id,
             )
         )
     return len(rows)
