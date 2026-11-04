@@ -1,0 +1,22 @@
+flowchart TD
+    START([START]) --> llm["llm<br/>the model decides the next step"]
+    llm -->|"tools_condition<br/>the reply has tool_calls"| tools["tools<br/>ToolNode runs the chosen catalog query"]
+    llm -->|"tools_condition<br/>the reply has no tool_calls"| END([END])
+    tools -->|"observation goes back to the model"| llm
+
+    catalog[("catalog.sqlite<br/>assets, competences, maps, trainings")]
+    checkpoints[("checkpoints.sqlite<br/>AsyncSqliteSaver, one state per thread_id")]
+
+    tools --> catalog
+    llm -.-> checkpoints
+
+    subgraph queries [Tools in tools.py]
+        get_competence
+        list_assets_by_competence
+        get_asset
+        list_trainings_by_user
+        list_trainings_competence
+        list_trainings_by_user_and_competence
+    end
+
+    tools --- queries

@@ -1,0 +1,301 @@
+Demo trace
+thread=demo-20261102T223536Z
+recursion_limit=10
+
+================================================================================
+2026-11-02T22:35:40Z  thread=demo-20261102T223536Z  tool_results=2
+--------------------------------------------------------------------------------
+USER
+Para la competencia Empatía, ¿qué videos ya validó un humano y qué dice la transcripción del primero?
+
+ASSISTANT
+tool_calls:
+- list_assets_by_competence
+{
+  "name": "Empatía",
+  "human_check": "approved"
+}
+
+TOOL list_assets_by_competence
+{
+  "competence": "Empatía",
+  "human_check": "approved",
+  "order": "name",
+  "assets": [
+    {
+      "name": "La pausa antes de responder",
+      "type": "video",
+      "url": "https://content.nimbus.test/videos/la-pausa-antes-de-responder",
+      "ai_check": true,
+      "human_check": "approved"
+    },
+    {
+      "name": "La reunión que nadie quería",
+      "type": "video",
+      "url": "https://content.nimbus.test/videos/la-reunion-que-nadie-queria",
+      "ai_check": true,
+      "human_check": "approved"
+    }
+  ],
+  "note": "Transcriptions are omitted. The first item is the first asset for this filter. Call get_asset with that exact name to read a transcription excerpt."
+}
+
+ASSISTANT
+tool_calls:
+- get_asset
+{
+  "name": "La pausa antes de responder"
+}
+
+TOOL get_asset
+{
+  "name": "La pausa antes de responder",
+  "type": "video",
+  "url": "https://content.nimbus.test/videos/la-pausa-antes-de-responder",
+  "checks": [
+    {
+      "competence": "Empatía",
+      "ai_check": true,
+      "human_check": "approved"
+    }
+  ],
+  "transcription_excerpt": "El video abre en un uno a uno. La colaboradora dice que se siente fuera de las decisiones del sprint. Quien facilita no responde enseguida: deja un silencio corto, repite lo que escuchó y recién después pregunta qué parte le pesa más, si la decisión o la forma en que se enteró. Esa pausa es el contenido central. Empatía acá no es dar la razón ni ofrecer una solución. Es devolver el relato con las…",
+  "incomplete": false
+}
+
+ASSISTANT
+Para la competencia **Empatía**, los videos que ya validó un humano son:
+
+1. [La pausa antes de responder](https://content.nimbus.test/videos/la-pausa-antes-de-responder)
+2. [La reunión que nadie quería](https://content.nimbus.test/videos/la-reunion-que-nadie-queria)
+
+La transcripción del primer video, "La pausa antes de responder", dice lo siguiente:
+
+"El video abre en un uno a uno. La colaboradora dice que se siente fuera de las decisiones del sprint. Quien facilita no responde enseguida: deja un silencio corto, repite lo que escuchó y recién después pregunta qué parte le pesa más, si la decisión o la forma en que se enteró. Esa pausa es el contenido central. Empatía acá no es dar la razón ni ofrecer una solución. Es devolver el relato con las…".
+
+================================================================================
+2026-11-02T22:35:44Z  thread=demo-20261102T223536Z  tool_results=2
+--------------------------------------------------------------------------------
+USER
+¿Y para Liderazgo?
+
+ASSISTANT
+tool_calls:
+- list_assets_by_competence
+{
+  "name": "Liderazgo",
+  "human_check": "approved"
+}
+
+TOOL list_assets_by_competence
+{
+  "competence": "Liderazgo",
+  "human_check": "approved",
+  "order": "name",
+  "assets": [
+    {
+      "name": "Feedback que mueve al equipo",
+      "type": "video",
+      "url": "https://content.nimbus.test/videos/feedback-que-mueve-al-equipo",
+      "ai_check": true,
+      "human_check": "approved"
+    }
+  ],
+  "note": "Transcriptions are omitted. The first item is the first asset for this filter. Call get_asset with that exact name to read a transcription excerpt."
+}
+
+ASSISTANT
+tool_calls:
+- get_asset
+{
+  "name": "Feedback que mueve al equipo"
+}
+
+TOOL get_asset
+{
+  "name": "Feedback que mueve al equipo",
+  "type": "video",
+  "url": "https://content.nimbus.test/videos/feedback-que-mueve-al-equipo",
+  "checks": [
+    {
+      "competence": "Liderazgo",
+      "ai_check": true,
+      "human_check": "approved"
+    }
+  ],
+  "transcription_excerpt": "En este video la facilitadora muestra un feedback de tres pasos frente al equipo. Primero describe la situación con fecha y lugar: la planificación del martes a la mañana. Después nombra la conducta observable, sin adjetivos sobre la persona: interrumpiste dos veces a Camila mientras presentaba el riesgo del proveedor. Cierra con el impacto en el equipo: se perdió el dato de dependencias y la deci…",
+  "incomplete": false
+}
+
+ASSISTANT
+Para la competencia **Liderazgo**, el video que ya validó un humano es:
+
+1. [Feedback que mueve al equipo](https://content.nimbus.test/videos/feedback-que-mueve-al-equipo)
+
+La transcripción de este video dice lo siguiente:
+
+"En este video la facilitadora muestra un feedback de tres pasos frente al equipo. Primero describe la situación con fecha y lugar: la planificación del martes a la mañana. Después nombra la conducta observable, sin adjetivos sobre la persona: interrumpiste dos veces a Camila mientras presentaba el riesgo del proveedor. Cierra con el impacto en el equipo: se perdió el dato de dependencias y la deci…".
+
+================================================================================
+2026-11-02T22:35:46Z  thread=demo-20261102T223536Z  tool_results=1
+--------------------------------------------------------------------------------
+USER
+¿Qué assets cubren la competencia Resiliencia?
+
+ASSISTANT
+tool_calls:
+- list_assets_by_competence
+{
+  "name": "Resiliencia"
+}
+
+TOOL list_assets_by_competence
+{
+  "error": "Competence 'Resiliencia' was not found.",
+  "valid_names": [
+    "Empatía",
+    "Inteligencia Social",
+    "Liderazgo"
+  ],
+  "hint": "Retry with one exact name from valid_names, or ask the user which competence they mean."
+}
+
+ASSISTANT
+La competencia **Resiliencia** no fue encontrada. Las competencias válidas son:
+
+- Empatía
+- Inteligencia Social
+- Liderazgo
+
+¿Te gustaría consultar sobre alguna de estas competencias?
+
+================================================================================
+2026-11-02T22:35:48Z  thread=demo-20261102T223536Z  tool_results=1
+--------------------------------------------------------------------------------
+USER
+¿El asset El silencio en la mesa está clasificado y qué dice su transcripción?
+
+ASSISTANT
+tool_calls:
+- get_asset
+{
+  "name": "El silencio en la mesa"
+}
+
+TOOL get_asset
+{
+  "name": "El silencio en la mesa",
+  "type": "video",
+  "url": "https://content.nimbus.test/videos/el-silencio-en-la-mesa",
+  "checks": [
+    {
+      "competence": "Inteligencia Social",
+      "ai_check": false,
+      "human_check": null
+    }
+  ],
+  "transcription_excerpt": "",
+  "incomplete": true,
+  "hint": "This record is incomplete. Say what is missing (empty transcription and/or ai_check false) instead of inventing it."
+}
+
+ASSISTANT
+El asset **El silencio en la mesa** está clasificado bajo la competencia **Inteligencia Social**, pero no ha sido validado por un humano y su revisión por inteligencia artificial no fue aprobada. Además, la transcripción está vacía, por lo que no se puede proporcionar contenido de este video.
+
+Si necesitas información sobre otro asset o competencia, házmelo saber.
+
+================================================================================
+2026-11-02T22:35:51Z  thread=demo-20261102T223536Z  tool_results=1
+--------------------------------------------------------------------------------
+USER
+¿Qué entrenamientos tiene asignados ana@nimbus.test?
+
+ASSISTANT
+tool_calls:
+- list_trainings_by_user
+{
+  "email": "ana@nimbus.test"
+}
+
+TOOL list_trainings_by_user
+{
+  "email": "ana@nimbus.test",
+  "trainings": [
+    {
+      "name": "Empatía en el 1:1",
+      "icon": "🤝",
+      "user_name": "Ana Pérez",
+      "user_email": "ana@nimbus.test",
+      "competence": "Empatía",
+      "progress": 0.1
+    },
+    {
+      "name": "Feedback semanal",
+      "icon": "💬",
+      "user_name": "Ana Pérez",
+      "user_email": "ana@nimbus.test",
+      "competence": "Liderazgo",
+      "progress": 0.2
+    },
+    {
+      "name": "Liderazgo en la práctica",
+      "icon": "🎯",
+      "user_name": "Ana Pérez",
+      "user_email": "ana@nimbus.test",
+      "competence": "Liderazgo",
+      "progress": 0.45
+    }
+  ]
+}
+
+ASSISTANT
+Ana Pérez (ana@nimbus.test) tiene asignados los siguientes entrenamientos:
+
+1. **Empatía en el 1:1** 🤝
+   - Competencia: Empatía
+   - Progreso: 10%
+
+2. **Feedback semanal** 💬
+   - Competencia: Liderazgo
+   - Progreso: 20%
+
+3. **Liderazgo en la práctica** 🎯
+   - Competencia: Liderazgo
+   - Progreso: 45%
+
+Si necesitas más información sobre alguno de estos entrenamientos, házmelo saber.
+
+================================================================================
+2026-11-02T22:35:54Z  thread=demo-20261102T223536Z  tool_results=1
+--------------------------------------------------------------------------------
+USER
+¿Y cuál es su progreso en Empatía?
+
+ASSISTANT
+tool_calls:
+- list_trainings_by_user_and_competence
+{
+  "email": "ana@nimbus.test",
+  "name": "Empatía"
+}
+
+TOOL list_trainings_by_user_and_competence
+{
+  "email": "ana@nimbus.test",
+  "competence": "Empatía",
+  "trainings": [
+    {
+      "name": "Empatía en el 1:1",
+      "icon": "🤝",
+      "user_name": "Ana Pérez",
+      "user_email": "ana@nimbus.test",
+      "competence": "Empatía",
+      "progress": 0.1
+    }
+  ]
+}
+
+ASSISTANT
+Ana Pérez tiene asignado el entrenamiento **Empatía en el 1:1** 🤝 para la competencia **Empatía**, y su progreso es del **10%**. 
+
+Si necesitas más información o tienes otra pregunta, no dudes en decírmelo.
