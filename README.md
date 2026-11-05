@@ -70,7 +70,7 @@ Put the key for the provider you call in `.env`. That file is gitignored.
 | `settings.py` | Paths, `recursion_limit`, excerpt length, the default provider, and the checkpointer backend |
 | `diagrams/graph.mermaid` | The agent graph and the two databases |
 | `trace.log` | Execution trace. The CLI and `--demo` append each turn here. Gitignored. `-c` / `--clean` truncates it. |
-| `trace.example.log` | Committed sample of one `--demo` run: the six questions, each tool call, the tool payload, and the answer. |
+| `trace.example.log` | Committed sample of one `--demo` run: the six questions on `samples.py`, each tool call, the tool payload, and the answer. |
 | `requirements.txt` | Dependencies |
 | `.env.dist` | Env template with empty secrets |
 
