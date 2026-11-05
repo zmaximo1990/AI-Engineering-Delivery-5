@@ -30,7 +30,7 @@ Neither file is committed. `trace.log` is the local execution trace and is gitig
 
 ## Requirements
 
-- Python 3.12
+- Python 3.12, declared in `pyproject.toml` as `>=3.12,<3.13`
 - An API key for the chat provider you call:
   - `OPENAI_API_KEY` when `-l openai` (the default)
   - `ANTHROPIC_API_KEY` when `-l anthropic`
@@ -38,12 +38,13 @@ Neither file is committed. `trace.log` is the local execution trace and is gitig
 
 ## Setup
 
-From this directory:
+From this directory. `pip install .` checks the Python constraint in `pyproject.toml`. `pip install -r requirements.txt` does not.
 
 ```bash
 python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
+python -m pip install .
 pip install -r requirements.txt
 cp .env.dist .env
 ```
@@ -72,6 +73,7 @@ Put the key for the provider you call in `.env`. That file is gitignored.
 | `trace.log` | Execution trace. The CLI and `--demo` append each turn here. Gitignored. `-c` / `--clean` truncates it. |
 | `trace.example.log` | Committed sample of one `--demo` run: the six questions on `samples.py`, each tool call, the tool payload, and the answer. |
 | `requirements.txt` | Dependencies |
+| `pyproject.toml` | Requires Python 3.12 (`>=3.12,<3.13`) |
 | `.env.dist` | Env template with empty secrets |
 
 ## Catalog
